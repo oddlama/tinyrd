@@ -123,6 +123,11 @@ for module in "${MODULES[@]}"; do
 	done
 done
 
+mkdir -p "$INITRAMFS/lib/modules/$KERNEL_VERSION" \
+	|| die "Could not create directory /lib/modules/$KERNEL_VERSION"
+cp -va "/lib/modules/$KERNEL_VERSION/modules."* "$INITRAMFS/lib/modules/$KERNEL_VERSION/" \
+	|| die "Could not copy module meta information into initramfs"
+
 status "Packing initramfs image"
 umask 077
 (
