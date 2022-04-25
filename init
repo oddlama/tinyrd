@@ -63,15 +63,15 @@ for param in $(cat /proc/cmdline); do
 	esac
 done
 
-status "Mounting root device"
-[ -b "${root-}" ] \
-	|| interactive_shell "Missing or empty root= parameter"
-mkdir -m700 /sysroot \
-	|| interactive_shell "Could not create /sysroot"
-mount -o ro "$root" /sysroot \
-	|| interactive_shell "Could not mount root device '$root' to /sysroot"
-
 if [ -n "$overlay" ]; then
+	status "Mounting root device"
+	[ -b "${root-}" ] \
+		|| interactive_shell "Missing or empty root= parameter"
+	mkdir -m700 /sysroot \
+		|| interactive_shell "Could not create /sysroot"
+	mount -o ro "$root" /sysroot \
+		|| interactive_shell "Could not mount root device '$root' to /sysroot"
+
 	status "Mounting overlayfs"
 	[ -b "${root-}" ] \
 		|| interactive_shell "Missing or empty overlay= parameter"
@@ -88,6 +88,14 @@ if [ -n "$overlay" ]; then
 
 	mount -t overlay -o lowerdir=/sysroot,upperdir=/overlay/upper,workdir=/overlay/work overlay /sysroot \
 		|| interactive_shell "Could not mount overlayfs over /sysroot"
+else
+	status "Mounting root device"
+	[ -b "${root-}" ] \
+		|| interactive_shell "Missing or empty root= parameter"
+	mkdir -m700 /sysroot \
+		|| interactive_shell "Could not create /sysroot"
+	mount "$root" /sysroot \
+		|| interactive_shell "Could not mount root device '$root' to /sysroot"
 fi
 
 status "Switching root to real system"
