@@ -57,8 +57,8 @@ status "Parsing commandline"
 # shellcheck disable=SC2013
 for param in $(cat /proc/cmdline); do
 	case "$param" in
-		root=) root="$(parse_device_spec "${param#root=}")" ;;
-		overlay=) overlay="$(parse_device_spec "${param#overlay=}")" ;;
+		root=*) root="$(parse_device_spec "${param#root=}")" ;;
+		overlay=*) overlay="$(parse_device_spec "${param#overlay=}")" ;;
 		*) ;;
 	esac
 done
@@ -71,6 +71,7 @@ mount -o ro "$root" /sysroot \
 
 if [ -n "$overlay" ]; then
 	status "Mounting overlayfs"
+
 	mkdir -m700 /overlay \
 		|| interactive_shell "Could not create /overlay"
 	mount "$overlay" /overlay \
