@@ -107,26 +107,28 @@ status "Adding keymap"
 loadkeys -b "$KEYMAP" > "$INITRAMFS/keyboard.kmap" \
 	|| die "Could not export binary keymap $KEYMAP"
 
-status "Adding modules"
-for module in "${MODULES[@]}"; do
-	mpdeps=$(modprobe --set-version "$KERNEL_VERSION" --show-depends "$module") \
-		|| die "Could not find module dependencies for module $module"
-	readarray -t deps <<< "$mpdeps" \
-		|| die "Could not read module dependencies into array"
-	for ko in "${deps[@]}"; do
-		ko="${ko#insmod }"
-		ko="${ko% }"
-		mkdir -p "$INITRAMFS/$(dirname "$ko")" \
-			|| die "Could not create parent directories for $ko"
-		cp -va "$ko" "$INITRAMFS/$ko" \
-			|| die "Could not install $ko into initramfs"
+if [[ "${#MODULES[@]}" -gt 0 ]]; then
+	status "Adding modules"
+	for module in "${MODULES[@]}"; do
+		mpdeps=$(modprobe --set-version "$KERNEL_VERSION" --show-depends "$module") \
+			|| die "Could not find module dependencies for module $module"
+		readarray -t deps <<< "$mpdeps" \
+			|| die "Could not read module dependencies into array"
+		for ko in "${deps[@]}"; do
+			ko="${ko#insmod }"
+			ko="${ko% }"
+			mkdir -p "$INITRAMFS/$(dirname "$ko")" \
+				|| die "Could not create parent directories for $ko"
+			cp -va "$ko" "$INITRAMFS/$ko" \
+				|| die "Could not install $ko into initramfs"
+		done
 	done
-done
 
-mkdir -p "$INITRAMFS/lib/modules/$KERNEL_VERSION" \
-	|| die "Could not create directory /lib/modules/$KERNEL_VERSION"
-cp -va "/lib/modules/$KERNEL_VERSION/modules."* "$INITRAMFS/lib/modules/$KERNEL_VERSION/" \
-	|| die "Could not copy module meta information into initramfs"
+	mkdir -p "$INITRAMFS/lib/modules/$KERNEL_VERSION" \
+		|| die "Could not create directory /lib/modules/$KERNEL_VERSION"
+	cp -va "/lib/modules/$KERNEL_VERSION/modules."* "$INITRAMFS/lib/modules/$KERNEL_VERSION/" \
+		|| die "Could not copy module meta information into initramfs"
+fi
 
 status "Packing initramfs image"
 umask 077
