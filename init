@@ -1,0 +1,60 @@
+#!/bin/sh
+
+export PATH="/bin"
+
+function status() {
+	echo "[1m[+] $*[m"
+}
+
+function interactive_shell() {
+	[[ $# -gt 0 ]] \
+		&& echo "[1;31merror:[m $*" >&2
+
+	echo "[1;33mEntering interactive shell.[m" >&2
+	sh
+}
+
+function parse_device_spec() {
+	case "$1" in
+		PARTUUID=) ;;
+		/dev/*) echo -n "$1" ;;
+		*) ;;
+	esac
+}
+
+interactive_shell
+
+status "Parsing commandline"
+for param in "$(cat /proc/cmdline)"; do
+	case "$param" in
+		root=) root="$(parse_device_spec "${param#root=}")" ;;
+		overlay=) overlay="$(parse_device_spec "${param#overlay=}")" ;;
+		*) ;;
+	esac
+done
+
+status "Mounting root device"
+mkdir -m700 /sysroot \
+	|| interactive_shell "Could not create /sysroot"
+mount -o ro "$root" /sysroot \
+	|| interactive_shell "Could not mount root device '$root' to /sysroot"
+
+if [[ -n "$overlay" ]]; then
+	status "Mounting overlayfs"
+	mkdir -m700 /overlay \
+		|| interactive_shell "Could not create /overlay"
+	mount "$overlay" /overlay \
+		|| interactive_shell "Could not mount overlay device '$overlay' to /overlay"
+
+	[[ -e /overlay/upper ]] || mkdir /overlay/upper \
+		|| interactive_shell "Could not create /overlay/upper"
+	[[ -e /overlay/work ]] || mkdir /overlay/work \
+		|| interactive_shell "Could not create /overlay/work"
+
+	mount -t overlay -o lowerdir=/sysroot,upperdir=/overlay/upper,workdir=/overlay/work overlay /sysroot \
+		|| interactive_shell "Could not mount overlayfs over /sysroot"
+fi
+
+status "Switching root to real system"
+exec switch_root /sysroot /init \
+	|| interactive_shell "Could not switch root to /sysroot and execute /init"

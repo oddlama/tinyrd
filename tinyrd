@@ -1,0 +1,73 @@
+#!/bin/bash
+
+set -uo pipefail
+umask 022
+
+ARCH=x86_64
+COMPRESSION_ALGORITHM=zstd
+
+function die() {
+	echo "[1;31merror:[m $*" >&2
+	exit 1
+}
+
+function die_usage() {
+	echo "usage: tinyrd <output_img>" >&2
+	exit 1
+}
+
+[[ $# -eq 1 ]] || die_usage
+OUTPUT="$(realpath "$1")"
+
+function status() {
+	echo "[1;33m[+] $*[m"
+}
+
+function compress() {
+	case "$COMPRESSION_ALGORITHM" in
+		gzip) gzip --best > "$1" ;;
+		zstd) zstd -q -f -o "$1" ;;
+		*)    die "Unsupported compression algorithm: $COMPRESSION_ALGORITHM" ;;
+	esac
+}
+
+TMPDIR=$(mktemp -d) \
+	|| die "Could not create temporary directory"
+trap 'rm -rf -- "$TMPDIR"' EXIT
+
+status "Creating base directory tree"
+INITRAMFS="$TMPDIR/initramfs"
+mkdir -p "$INITRAMFS/"{bin,dev,proc,sys} \
+	|| die "Could not create base directories"
+
+status "Cloning busybox"
+git clone --depth 1 https://git.busybox.net/busybox/ "$TMPDIR/busybox" \
+	|| die "Could not clone busybox"
+
+status "Compiling busybox"
+cp busybox.config "$TMPDIR/busybox/.config"
+( cd "$TMPDIR/busybox" && make ) \
+	|| die "Could not compile busybox"
+
+status "Installing busybox in initramfs"
+cp "$TMPDIR/busybox/busybox" "$INITRAMFS/bin/busybox"
+for applet in $("$INITRAMFS/bin/busybox" --list); do
+	ln -s busybox "$INITRAMFS/bin/$applet"
+done
+
+status "Installing init script"
+install -m755 init "$INITRAMFS/init" \
+	|| die "Could not copy init script"
+
+status "Packing initramfs image"
+umask 077
+(
+	cd "$INITRAMFS"
+	find . -print0 \
+		| cpio --quiet --null --create --format=newc --owner=0:0 \
+		| compress "$OUTPUT"
+) || die "Could not pack initramfs"
+
+size=$(stat -c %s "$OUTPUT" | numfmt --to=iec)
+blocks=$(stat -c %b "$OUTPUT")
+echo "size $size  blocks $blocks  $OUTPUT"
