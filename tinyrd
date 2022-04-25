@@ -71,7 +71,7 @@ function parse_args() {
 				'--force'|'-f') OVERWRITE_OUTPUT=true ;;
 				'--') accept_opts=false ;;
 				'--'*) die "invalid argument $arg" ;;
-				*) parse_output "$arg"; shift ;;
+				*) parse_output "$arg"; ;;
 			esac
 		else
 			parse_output "$1"; shift
@@ -150,7 +150,7 @@ fi
 # that modprobe may correctly load them in the initramfs.
 if [[ -n "$MODULES" ]]; then
 	status "Adding modules"
-	IFS=, read -r -a MODULES_ARRAY <<< "$1"
+	IFS=, read -r -a MODULES_ARRAY <<< "$MODULES"
 	for module in "${MODULES_ARRAY[@]}"; do
 		mpdeps=$(modprobe --set-version "$KERNEL_VERSION" --show-depends "$module") \
 			|| die "Could not find module dependencies for module $module"
