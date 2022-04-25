@@ -81,7 +81,7 @@ mdev -s \
 ################################################################
 # Parse the kernel command line
 
-root_mount_opts="-o noatime"
+root_mount_opts="noatime"
 
 status "Parsing commandline"
 # shellcheck disable=SC2013
@@ -96,7 +96,7 @@ done
 
 # Mount root read-only if desired, or if we are using an overlayfs
 [ -n "$overlay" ] && root_ro=true
-[ "$root_ro" == true ] && root_mount_opts="$root_mount_opts -o ro"
+[ "$root_ro" == true ] && root_mount_opts="$root_mount_opts,ro"
 
 
 ################################################################
@@ -108,7 +108,7 @@ status "Mounting root device"
 mkdir -m700 /sysroot \
 	|| interactive_shell "Could not create /sysroot"
 # shellcheck disable=SC2086
-mount $root_mount_opts "$root" /sysroot \
+mount -o $root_mount_opts "$root" /sysroot \
 	|| interactive_shell "Could not mount root device '$root' to /sysroot"
 
 
@@ -116,7 +116,7 @@ mount $root_mount_opts "$root" /sysroot \
 # If desired, mount a overlayfs over the root file system
 
 if [ -n "$overlay" ]; then
-	status "Mounting overlayfs"
+	status "Mounting overlay"
 	[ -b "${root-}" ] \
 		|| interactive_shell "Missing or empty overlay= parameter"
 
@@ -130,7 +130,7 @@ if [ -n "$overlay" ]; then
 	[ -e /overlay/work ] || mkdir /overlay/work \
 		|| interactive_shell "Could not create /overlay/work"
 
-	mount -t overlay -o lowerdir=/sysroot,upperdir=/overlay/upper,workdir=/overlay/work overlay /sysroot \
+	mount -t overlay -o noatime,lowerdir=/sysroot,upperdir=/overlay/upper,workdir=/overlay/work overlay /sysroot \
 		|| interactive_shell "Could not mount overlayfs over /sysroot"
 fi
 
