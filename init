@@ -2,13 +2,20 @@
 
 export PATH="/bin"
 
-# Defaults for variables provided during initramfs generation
-RAW_MODULES="${RAW_MODULES-}"
+# Defaults for variables which will be added when the initramfs
+# is generated (mostly build-time command line arguments)
+MODULES="${MODULES-}"
 
-status() {
-	echo "[1m[+] $*[m"
-}
 
+################################################################
+# Utility functions
+
+# A function to print a slightly emphasized status message
+status() { echo "[1m[+] $*[m"; }
+
+# This function starts an interactive shell.
+# If any arguments are given, they indicate an error message
+# that is printed before the shell is opened.
 interactive_shell() {
 	[ $# -gt 0 ] \
 		&& echo "[1;31merror:[m $*" >&2
@@ -18,27 +25,43 @@ interactive_shell() {
 	sh
 }
 
+# This function is used anywhere a block device should
+# be accepted in the kernel command line, which allows
+# the user to specify block devices either using their
+# full path, or a property related to the device.
+# Currently, file system LABEL and UUID are supported.
 parse_device_spec() {
 	case "$1" in
+		LABEL=*) blkid | grep " LABEL=\"${1#LABEL=}\"" | cut -d: -f1 ;;
 		UUID=*) blkid | grep " UUID=\"${1#UUID=}\"" | cut -d: -f1 ;;
 		/dev/*) echo "$1" ;;
 		*) ;;
 	esac
 }
 
-status "Loading keymap"
-loadkmap < /keyboard.kmap \
-	|| interactive_shell "Failed to load keyboard map"
 
+################################################################
+# Initial setup
+
+# If a keymap was provided, load it now.
+if [ -e /keyboard.kmap ]; then
+	status "Loading keymap"
+	loadkmap < /keyboard.kmap \
+		|| interactive_shell "Failed to load keyboard map"
+fi
+
+# Mount virtual file systems proc and sys, so
+# that we can load modules and properly start processes.
 status "Mounting special file systems"
 mount -t proc proc /proc \
 	|| interactive_shell "Could not mount /proc special file system"
 mount -t sysfs sys /sys \
 	|| interactive_shell "Could not mount /sys special file system"
 
-if [ -n "$RAW_MODULES" ]; then
+# Load any modules that were included in the initramfs.
+if [ -n "$MODULES" ]; then
 	status "Loading kernel modules"
-	rest="$RAW_MODULES,"
+	rest="$MODULES,"
 	while true; do
 		module="${rest%%,*}"
 		[ -z "$module" ] && break
@@ -49,29 +72,50 @@ if [ -n "$RAW_MODULES" ]; then
 	done
 fi
 
+# Load any modules that were included in the initramfs.
 status "Populating /dev"
 mdev -s \
 	|| interactive_shell "mdev failed to setup device nodes"
+
+
+################################################################
+# Parse the kernel command line
+
+root_mount_opts="-o noatime"
 
 status "Parsing commandline"
 # shellcheck disable=SC2013
 for param in $(cat /proc/cmdline); do
 	case "$param" in
+		ro) root_ro=true ;;
 		root=*) root="$(parse_device_spec "${param#root=}")" ;;
 		overlay=*) overlay="$(parse_device_spec "${param#overlay=}")" ;;
 		*) ;;
 	esac
 done
 
-if [ -n "$overlay" ]; then
-	status "Mounting root device"
-	[ -b "${root-}" ] \
-		|| interactive_shell "Missing or empty root= parameter"
-	mkdir -m700 /sysroot \
-		|| interactive_shell "Could not create /sysroot"
-	mount -o ro "$root" /sysroot \
-		|| interactive_shell "Could not mount root device '$root' to /sysroot"
+# Mount root read-only if desired, or if we are using an overlayfs
+[ -n "$overlay" ] && root_ro=true
+[ "$root_ro" == true ] && root_mount_opts="$root_mount_opts -o ro"
 
+
+################################################################
+# Mount the root file system
+
+status "Mounting root device"
+[ -b "${root-}" ] \
+	|| interactive_shell "Missing or empty root= parameter"
+mkdir -m700 /sysroot \
+	|| interactive_shell "Could not create /sysroot"
+# shellcheck disable=SC2086
+mount $root_mount_opts "$root" /sysroot \
+	|| interactive_shell "Could not mount root device '$root' to /sysroot"
+
+
+################################################################
+# If desired, mount a overlayfs over the root file system
+
+if [ -n "$overlay" ]; then
 	status "Mounting overlayfs"
 	[ -b "${root-}" ] \
 		|| interactive_shell "Missing or empty overlay= parameter"
@@ -88,15 +132,11 @@ if [ -n "$overlay" ]; then
 
 	mount -t overlay -o lowerdir=/sysroot,upperdir=/overlay/upper,workdir=/overlay/work overlay /sysroot \
 		|| interactive_shell "Could not mount overlayfs over /sysroot"
-else
-	status "Mounting root device"
-	[ -b "${root-}" ] \
-		|| interactive_shell "Missing or empty root= parameter"
-	mkdir -m700 /sysroot \
-		|| interactive_shell "Could not create /sysroot"
-	mount "$root" /sysroot \
-		|| interactive_shell "Could not mount root device '$root' to /sysroot"
 fi
+
+
+################################################################
+# Switch into the new root
 
 status "Switching root to real system"
 umount /dev /proc /sys

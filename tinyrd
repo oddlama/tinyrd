@@ -3,24 +3,53 @@
 set -uo pipefail
 umask 022
 
-function die() {
-	echo "[1;31merror:[m $*" >&2
-	exit 1
+
+################################################################
+# Utility functions
+
+function die() { echo "[1;31merror:[m $*" >&2; exit 1; }
+function die_usage() { echo "usage: tinyrd [--force|-f] [--keymap <keymap>] [--kernel-version <kernel_version>] [--modules <MODULES,MODULE2,...>] [--compress <none,zstd,gzip>] <output_img>" >&2; exit "$1"; }
+function status() { echo "[1;33m[+] $*[m"; }
+
+# This function is used to compress the resulting
+# initramfs cpio archive (stdin), and should output
+# the initramfs image to "$1".
+function compress() {
+	case "$COMPRESSION_ALGORITHM" in
+		gzip) gzip --best > "$1" ;;
+		zstd) zstd -q -f -o "$1" ;;
+		*) die "Unsupported compression algorithm: $COMPRESSION_ALGORITHM" ;;
+	esac
 }
 
-function die_usage() {
-	echo "usage: tinyrd [--force|-f] [--keymap <keymap>] [--kernel-version <kernel_version>] [--modules <MODULES,MODULE2,...>] [--compress <none,zstd,gzip>] <output_img>" >&2
-	exit 1
-}
 
-COMPRESSION_ALGORITHM=none
-KEYMAP=de-latin1-nodeadkeys
+################################################################
+# Default settings for the initramfs. Otherwise provided as
+# command line arguments to this script
+
+# Compress with zstd by default. While decompression will likely
+# be faster than reading from disk when using an HDD, the initramfs
+# is so small that it doesn't matter at all when using SSDs.
+# Your milage may vary, but zstd is a modern and sane default.
+COMPRESSION_ALGORITHM=zstd
+# A keymap that will be loaded when the initramfs starts.
+# Useful if you suddenly find yourself in an emergency shell.
+KEYMAP=""
+# If --modules is given, by default we will use the modules
+# for the currently running kernel. Ignored if no modules are added.
 KERNEL_VERSION="$(uname -r)"
-RAW_MODULES=""
-MODULES=()
+# A comma separated list of modules to include and load in the initramfs
+MODULES=""
+# The output image for the initramfs
 OUTPUT=""
+# Whether to allow overwriting an existing image file.
 OVERWRITE_OUTPUT=false
 
+
+################################################################
+# Command line parsing
+
+# Parses the command line arguments
 function parse_args() {
 	function parse_output() {
 		[[ -z "$OUTPUT" ]] \
@@ -34,11 +63,11 @@ function parse_args() {
 		if [[ "$accept_opts" == "true" ]]; then
 			arg="$1"; shift
 			case "$arg" in
-				'--help'|'-h') die_usage ;;
+				'--help'|'-h') die_usage 0 ;;
 				'--compress') COMPRESSION_ALGORITHM="$1"; shift ;;
 				'--keymap') KEYMAP="$1"; shift ;;
 				'--kernel-version') KERNEL_VERSION="$1"; shift ;;
-				'--modules') RAW_MODULES="$1"; IFS=, read -r -a MODULES <<< "$1"; shift ;;
+				'--modules') MODULES="$1"; shift ;;
 				'--force'|'-f') OVERWRITE_OUTPUT=true ;;
 				'--') accept_opts=false ;;
 				'--'*) die "invalid argument $arg" ;;
@@ -50,66 +79,79 @@ function parse_args() {
 	done
 }
 
+# Parse arguments and check that the mandatory
+# output is given (and doesn't exists, if we should not overwrite).
 parse_args "$@"
-[[ -n "$OUTPUT" ]] || die_usage
+[[ -n "$OUTPUT" ]] || die_usage 1
 [[ -e "$OUTPUT" && "$OVERWRITE_OUTPUT" != "true" ]] \
 	&& die "Refusing to overwrite existing file $OUTPUT. Use --force to allow overwriting."
 
-function status() {
-	echo "[1;33m[+] $*[m"
-}
 
-function compress() {
-	case "$COMPRESSION_ALGORITHM" in
-		gzip) gzip --best > "$1" ;;
-		zstd) zstd -q -f -o "$1" ;;
-		*) die "Unsupported compression algorithm: $COMPRESSION_ALGORITHM" ;;
-	esac
-}
+################################################################
+# Initramfs creation
 
+# This temporary directory will be removed on-exit,
+# and is used to store the initramfs contents and
+# transient files such as the busybox source.
 TMPDIR=$(mktemp -d) \
 	|| die "Could not create temporary directory"
 trap 'rm -rf -- "$TMPDIR"' EXIT
 
+# These directories will always be required in the
+# initramfs, which is why we include them in the archive.
 status "Creating base directory tree"
 INITRAMFS="$TMPDIR/initramfs"
 mkdir -p "$INITRAMFS/"{bin,dev,proc,sys} \
 	|| die "Could not create base directories"
 
+# Clone and compile busybox using the contributed configuration,
+# which will only select commonly used tools and none of the
+# nonsense stuff like printer support or debian-specific tools.
 status "Cloning busybox"
 git clone --depth 1 https://git.busybox.net/busybox/ "$TMPDIR/busybox" \
 	|| die "Could not clone busybox"
-
 status "Compiling busybox"
 cp busybox.config "$TMPDIR/busybox/.config"
 ( cd "$TMPDIR/busybox" && make ) \
 	|| die "Could not compile busybox"
 
+# Copy busybox to the initramfs and create links
+# for all included applets so they can be used in the init script.
 status "Installing busybox in initramfs"
 cp "$TMPDIR/busybox/busybox" "$INITRAMFS/bin/busybox"
 for applet in $("$INITRAMFS/bin/busybox" --list); do
 	ln -s busybox "$INITRAMFS/bin/$applet"
 done
 
+# Remove the first line (shebang) from the init script
+# and replace it with the shebang and some dynamic variables
+# that we want to pass to the initramfs (mainly which modules to load).
 status "Installing init script"
 cat > "$INITRAMFS/init" << EOF \
 	|| die "Could not append variables to init script"
 #!/bin/sh
 
-RAW_MODULES=${RAW_MODULES@Q}
+MODULES=${MODULES@Q}
 EOF
 tail -n +2 init >> "$INITRAMFS/init" \
 	|| die "Could not copy init script"
 chmod 755 "$INITRAMFS/init" \
 	|| die "Could not chmod init script"
 
-status "Adding keymap"
-loadkeys -b "$KEYMAP" > "$INITRAMFS/keyboard.kmap" \
-	|| die "Could not export binary keymap $KEYMAP"
+# If a keymap was selected, include it in the initramfs.
+if [[ -n "$KEYMAP" ]]; then
+	status "Adding keymap"
+	loadkeys -b "$KEYMAP" > "$INITRAMFS/keyboard.kmap" \
+		|| die "Could not export binary keymap $KEYMAP"
+fi
 
-if [[ "${#MODULES[@]}" -gt 0 ]]; then
+# If any modules are required, copy them and their dependencies
+# over to the initramfs. Also include meta information so
+# that modprobe may correctly load them in the initramfs.
+if [[ -n "$MODULES" ]]; then
 	status "Adding modules"
-	for module in "${MODULES[@]}"; do
+	IFS=, read -r -a MODULES_ARRAY <<< "$1"
+	for module in "${MODULES_ARRAY[@]}"; do
 		mpdeps=$(modprobe --set-version "$KERNEL_VERSION" --show-depends "$module") \
 			|| die "Could not find module dependencies for module $module"
 		readarray -t deps <<< "$mpdeps" \
@@ -130,6 +172,8 @@ if [[ "${#MODULES[@]}" -gt 0 ]]; then
 		|| die "Could not copy module meta information into initramfs"
 fi
 
+# Finally, pack the initramfs into a cpio archive
+# and compress it if desired.
 status "Packing initramfs image"
 umask 077
 (
@@ -139,6 +183,7 @@ umask 077
 		| compress "$OUTPUT"
 ) || die "Could not pack initramfs"
 
+# Print some stats.
 size=$(stat -c %s "$OUTPUT" | numfmt --to=iec)
 blocks=$(stat -c %b "$OUTPUT")
 echo "size $size  blocks $blocks  $OUTPUT"
