@@ -37,13 +37,14 @@ mount -t sysfs sys /sys \
 	|| interactive_shell "Could not mount /sys special file system"
 
 status "Loading kernel modules"
-rest="$RAW_MODULES"
-while [ -n "$rest" ]; do
-	module=${rest%%,*}
-	rest=${rest#*,}
+rest="$RAW_MODULES,"
+while true; do
+	module="${rest%%,*}"
+	[ -z "$module" ] && break
+	rest="${rest#*,}"
 	echo "loading module $module ..."
 	modprobe "$module" \
-	|| interactive_shell "Failed to load module $module"
+		|| interactive_shell "Failed to load module $module"
 done
 
 status "Populating /dev"
