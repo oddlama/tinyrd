@@ -64,6 +64,8 @@ for param in $(cat /proc/cmdline); do
 done
 
 status "Mounting root device"
+[ -b "${root-}" ] \
+	|| interactive_shell "Missing or empty root= parameter"
 mkdir -m700 /sysroot \
 	|| interactive_shell "Could not create /sysroot"
 mount -o ro "$root" /sysroot \
@@ -71,6 +73,8 @@ mount -o ro "$root" /sysroot \
 
 if [ -n "$overlay" ]; then
 	status "Mounting overlayfs"
+	[ -b "${root-}" ] \
+		|| interactive_shell "Missing or empty overlay= parameter"
 
 	mkdir -m700 /overlay \
 		|| interactive_shell "Could not create /overlay"
