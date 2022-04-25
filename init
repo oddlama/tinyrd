@@ -20,7 +20,7 @@ interactive_shell() {
 
 parse_device_spec() {
 	case "$1" in
-		PARTUUID=) ;;
+		UUID=*) blkid | grep " UUID=\"${1#UUID=}\"" | cut -d: -f1 ;;
 		/dev/*) echo "$1" ;;
 		*) ;;
 	esac
