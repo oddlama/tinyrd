@@ -96,7 +96,7 @@ done
 
 # Mount root read-only if desired, or if we are using an overlayfs
 [ -n "$overlay" ] && root_ro=true
-[ "$root_ro" == true ] && root_mount_opts="$root_mount_opts,ro"
+[ "$root_ro" = true ] && root_mount_opts="$root_mount_opts,ro"
 
 
 ################################################################
