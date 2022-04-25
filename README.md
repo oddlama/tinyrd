@@ -1,8 +1,8 @@
 ## What is tinyrd?
 
 Tinyrd is a lightweight initramfs builder. It provides only the bare minimum
-to get a system running. By default it includes a few common modes of operation
-for classic desktop systems () or virtual machines.
+to get a system running. Currently, it includes a few common modes of operation
+suitable for classic desktop systems or virtual machines. ZFS support is planned.
 
 If you instead require a well-maintained and modular initramfs, please have a look at the [dracut](https://github.com/dracutdevs/dracut) project.
 
