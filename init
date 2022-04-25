@@ -2,30 +2,57 @@
 
 export PATH="/bin"
 
-function status() {
+# Defaults for variables provided during initramfs generation
+RAW_MODULES="${RAW_MODULES-}"
+
+status() {
 	echo "[1m[+] $*[m"
 }
 
-function interactive_shell() {
-	[[ $# -gt 0 ]] \
+interactive_shell() {
+	[ $# -gt 0 ] \
 		&& echo "[1;31merror:[m $*" >&2
 
 	echo "[1;33mEntering interactive shell.[m" >&2
+	echo "[1;33mPress Ctrl-D to continue.[m" >&2
 	sh
 }
 
-function parse_device_spec() {
+parse_device_spec() {
 	case "$1" in
 		PARTUUID=) ;;
-		/dev/*) echo -n "$1" ;;
+		/dev/*) echo "$1" ;;
 		*) ;;
 	esac
 }
 
-interactive_shell
+status "Setting keymap"
+loadkmap < /keyboard.kmap \
+	|| interactive_shell "Failed to load keyboard map"
+
+status "Mounting special file systems"
+mount -t proc proc /proc \
+	|| interactive_shell "Could not mount /proc special file system"
+mount -t sysfs sys /sys \
+	|| interactive_shell "Could not mount /sys special file system"
+
+status "Loading kernel modules"
+rest="$RAW_MODULES"
+while [ -n "$rest" ]; do
+	module=${rest%%,*}
+	rest=${rest#*,}
+	echo "loading module $module ..."
+	modprobe "$module" \
+	|| interactive_shell "Failed to load module $module"
+done
+
+status "Populating /dev"
+mdev -s \
+	|| interactive_shell "mdev failed to setup device nodes"
 
 status "Parsing commandline"
-for param in "$(cat /proc/cmdline)"; do
+# shellcheck disable=SC2013
+for param in $(cat /proc/cmdline); do
 	case "$param" in
 		root=) root="$(parse_device_spec "${param#root=}")" ;;
 		overlay=) overlay="$(parse_device_spec "${param#overlay=}")" ;;
@@ -39,16 +66,16 @@ mkdir -m700 /sysroot \
 mount -o ro "$root" /sysroot \
 	|| interactive_shell "Could not mount root device '$root' to /sysroot"
 
-if [[ -n "$overlay" ]]; then
+if [ -n "$overlay" ]; then
 	status "Mounting overlayfs"
 	mkdir -m700 /overlay \
 		|| interactive_shell "Could not create /overlay"
 	mount "$overlay" /overlay \
 		|| interactive_shell "Could not mount overlay device '$overlay' to /overlay"
 
-	[[ -e /overlay/upper ]] || mkdir /overlay/upper \
+	[ -e /overlay/upper ] || mkdir /overlay/upper \
 		|| interactive_shell "Could not create /overlay/upper"
-	[[ -e /overlay/work ]] || mkdir /overlay/work \
+	[ -e /overlay/work ] || mkdir /overlay/work \
 		|| interactive_shell "Could not create /overlay/work"
 
 	mount -t overlay -o lowerdir=/sysroot,upperdir=/overlay/upper,workdir=/overlay/work overlay /sysroot \
@@ -56,5 +83,6 @@ if [[ -n "$overlay" ]]; then
 fi
 
 status "Switching root to real system"
-exec switch_root /sysroot /init \
-	|| interactive_shell "Could not switch root to /sysroot and execute /init"
+umount /dev /proc /sys
+exec switch_root /sysroot /sbin/init \
+	|| interactive_shell "Could not switch root to /sysroot and execute /sbin/init"
