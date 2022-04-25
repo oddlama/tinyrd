@@ -26,7 +26,7 @@ parse_device_spec() {
 	esac
 }
 
-status "Setting keymap"
+status "Loading keymap"
 loadkmap < /keyboard.kmap \
 	|| interactive_shell "Failed to load keyboard map"
 
