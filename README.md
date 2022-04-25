@@ -27,10 +27,7 @@ By default, tinyrd supports these kernel command line parameters:
 |--------------------|-----------------------------------------------------------------|
 | `root=<device>`    | Specifies the root device for the new system root.              |
 | `ro`               | If given, mount the root device read-only.                      |
-| `overlay=<device>` | This will mount the given device as an overlayfs                |
-|                    | on top of the system root before switing to the new system.     |
-|                    | If given, the underlying root device will be mounted read-only. |
-|                    | (Useful for virtual machines that share common system root)     |
+| `overlay=<device>` | This will mount the given device as an overlayfs on top of the system root before<br> switing to the new system. If given, the underlying root device will be mounted read-only.<br> (Useful for virtual machines that share common system root) |
 
 ## Hacking
 
