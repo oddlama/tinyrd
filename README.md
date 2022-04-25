@@ -8,8 +8,10 @@ If you instead require a well-maintained and modular initramfs, please have a lo
 
 ## Usage
 
-Creating an initramfs using tinyrd is simple.
-Just clone this repository and execute `tinyrd`:
+You can creating an initramfs using tinyrd by cloning this repository and
+executing the `tinyrd` build script. The options are documented in the script.
+It's not necessary to run `tinyrd` as root, and you
+can avoid to compile busybox using elevated privileges by doing so.
 
 ```bash
 git clone https://github.com/oddlama/tinyrd
@@ -19,25 +21,16 @@ cd tinyrd
 ./tinyrd --keymap de-latin1 --modules virtio_blk,virtio_scsi /boot/tinyrd.img
 ```
 
-It's not necessary to run `tinyrd` as root, and you
-can avoid to compile busybox using elevated privileges by doing so.
-
 By default, tinyrd supports these kernel command line parameters:
 
-#### `root=<device-spec>`
-
-Specifies the root device for the new system root.
-
-#### `ro`
-
-If given, mount the root device read-only.
-
-#### `overlay=<device-spec>`
-
-This will mount the given device as an overlayfs
-on top of the system root before switing to the new system.
-If given, the underlying root device will be mounted read-only.
-(Useful for virtual machines that share common system root)
+| Parameter          | Description                                                     |
+|--------------------|-----------------------------------------------------------------|
+| `root=<device>`    | Specifies the root device for the new system root.              |
+| `ro`               | If given, mount the root device read-only.                      |
+| `overlay=<device>` | This will mount the given device as an overlayfs                |
+|                    | on top of the system root before switing to the new system.     |
+|                    | If given, the underlying root device will be mounted read-only. |
+|                    | (Useful for virtual machines that share common system root)     |
 
 ## Hacking
 
