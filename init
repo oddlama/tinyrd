@@ -11,7 +11,7 @@ MODULES="${MODULES-}"
 # Utility functions
 
 # A function to print a slightly emphasized status message
-status() { echo "[1m[+] $*[m"; }
+status() { echo "[1m[+] $*[m"; [ -e /dev/kmsg ] && { echo "tinyrd: $*" > /dev/kmsg; }; }
 
 # This function starts an interactive shell.
 # If any arguments are given, they indicate an error message
@@ -32,8 +32,8 @@ interactive_shell() {
 # Currently, file system LABEL and UUID are supported.
 parse_device_spec() {
 	case "$1" in
-		LABEL=*) blkid | grep " LABEL=\"${1#LABEL=}\"" | cut -d: -f1 ;;
-		UUID=*) blkid | grep " UUID=\"${1#UUID=}\"" | cut -d: -f1 ;;
+		LABEL=*) findfs "${1#LABEL=}" ;;
+		UUID=*) findfs "${1#UUID=}" ;;
 		/dev/*) echo "$1" ;;
 		*) ;;
 	esac
@@ -71,11 +71,6 @@ if [ -n "$MODULES" ]; then
 			|| interactive_shell "Failed to load module $module"
 	done
 fi
-
-# Load any modules that were included in the initramfs.
-status "Populating /dev"
-mdev -s \
-	|| interactive_shell "mdev failed to setup device nodes"
 
 
 ################################################################
@@ -125,12 +120,12 @@ if [ -n "$overlay" ]; then
 	mount "$overlay" /overlay \
 		|| interactive_shell "Could not mount overlay device '$overlay' to /overlay"
 
-	[ -e /overlay/upper ] || mkdir /overlay/upper \
-		|| interactive_shell "Could not create /overlay/upper"
+	[ -e /overlay/data ] || mkdir /overlay/data \
+		|| interactive_shell "Could not create /overlay/data"
 	[ -e /overlay/work ] || mkdir /overlay/work \
 		|| interactive_shell "Could not create /overlay/work"
 
-	mount -t overlay -o noatime,lowerdir=/sysroot,upperdir=/overlay/upper,workdir=/overlay/work overlay /sysroot \
+	mount -t overlay -o noatime,lowerdir=/sysroot,upperdir=/overlay/data,workdir=/overlay/work overlay /sysroot \
 		|| interactive_shell "Could not mount overlayfs over /sysroot"
 fi
 
@@ -140,5 +135,6 @@ fi
 
 status "Switching root to real system"
 umount /dev /proc /sys
+interactive_shell
 exec switch_root /sysroot /sbin/init \
 	|| interactive_shell "Could not switch root to /sysroot and execute /sbin/init"
