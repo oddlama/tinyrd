@@ -32,8 +32,8 @@ interactive_shell() {
 # Currently, file system LABEL and UUID are supported.
 parse_device_spec() {
 	case "$1" in
-		LABEL=*) findfs "${1#LABEL=}" ;;
-		UUID=*) findfs "${1#UUID=}" ;;
+		LABEL=*) findfs "$1" ;;
+		UUID=*) findfs "$1";;
 		/dev/*) echo "$1" ;;
 		*) ;;
 	esac
