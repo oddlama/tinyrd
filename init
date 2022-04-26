@@ -117,7 +117,7 @@ if [ -n "$overlay" ]; then
 	[ -b "${root-}" ] \
 		|| interactive_shell "Missing or empty overlay= parameter"
 
-	mkdir -m700 /overlay \
+	mkdir -m755 /overlay \
 		|| interactive_shell "Could not create /overlay"
 	mount "$overlay" /overlay \
 		|| interactive_shell "Could not mount overlay device '$overlay' to /overlay"
@@ -127,6 +127,8 @@ if [ -n "$overlay" ]; then
 	[ -e /overlay/work ] || mkdir /overlay/work \
 		|| interactive_shell "Could not create /overlay/work"
 
+	chmod 755 /overlay/data /overlay/work \
+		|| interactive_shell "Could not make /overlay/{data,work} directories accessible"
 	mount -t overlay -o noatime,lowerdir=/sysroot,upperdir=/overlay/data,workdir=/overlay/work overlay /sysroot \
 		|| interactive_shell "Could not mount overlayfs over /sysroot"
 fi
@@ -137,6 +139,5 @@ fi
 
 status "Switching root to real system"
 umount /dev /proc /sys
-interactive_shell
 exec switch_root /sysroot /sbin/init \
 	|| interactive_shell "Could not switch root to /sysroot and execute /sbin/init"
