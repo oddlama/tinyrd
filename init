@@ -11,7 +11,7 @@ MODULES="${MODULES-}"
 # Utility functions
 
 # A function to print a slightly emphasized status message
-status() { echo "[1m[+] $*[m"; [ -e /dev/kmsg ] && { echo "tinyrd: $*" > /dev/kmsg; }; }
+status() { echo "[1m[+] $*[m"; echo "tinyrd: $*" > /dev/kmsg; }
 
 # This function starts an interactive shell.
 # If any arguments are given, they indicate an error message
@@ -43,20 +43,22 @@ parse_device_spec() {
 ################################################################
 # Initial setup
 
+# Mount virtual file systems proc and sys, so
+# that we can load modules and properly start processes.
+status "Mounting special file systems"
+mount -t proc none /proc \
+	|| interactive_shell "Could not mount /proc special file system"
+mount -t sysfs none /sys \
+	|| interactive_shell "Could not mount /sys special file system"
+mount -t devtmpfs none /dev \
+	|| interactive_shell "Could not mount /dev special file system"
+
 # If a keymap was provided, load it now.
 if [ -e /keyboard.kmap ]; then
 	status "Loading keymap"
 	loadkmap < /keyboard.kmap \
 		|| interactive_shell "Failed to load keyboard map"
 fi
-
-# Mount virtual file systems proc and sys, so
-# that we can load modules and properly start processes.
-status "Mounting special file systems"
-mount -t proc proc /proc \
-	|| interactive_shell "Could not mount /proc special file system"
-mount -t sysfs sys /sys \
-	|| interactive_shell "Could not mount /sys special file system"
 
 # Load any modules that were included in the initramfs.
 if [ -n "$MODULES" ]; then
