@@ -11,7 +11,7 @@ MODULES="${MODULES-}"
 # Utility functions
 
 # A function to print a slightly emphasized status message
-status() { echo "[1m[+] $*[m"; echo "tinyrd: $*" > /dev/kmsg; }
+status() { echo "[1m[+] $*[m"; echo "<6>tinyrd: $*" > /dev/kmsg; }
 
 # This function starts an interactive shell.
 # If any arguments are given, they indicate an error message
