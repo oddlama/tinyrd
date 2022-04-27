@@ -85,8 +85,14 @@ status "Parsing commandline"
 for param in $(cat /proc/cmdline); do
 	case "$param" in
 		ro) root_ro=true ;;
-		root=*) root="$(parse_device_spec "${param#root=}")" ;;
-		overlay=*) overlay="$(parse_device_spec "${param#overlay=}")" ;;
+		root=*)
+			root="$(parse_device_spec "${param#root=}")"
+			[ -n "$root" ] || interactive_shell "Could not find device $param"
+			;;
+		overlay=*)
+			overlay="$(parse_device_spec "${param#overlay=}")"
+			[ -n "$root" ] || interactive_shell "Could not find device $param"
+			;;
 		*) ;;
 	esac
 done
